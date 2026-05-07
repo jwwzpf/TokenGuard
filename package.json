@@ -1,0 +1,28 @@
+{
+  "name": "token-guard",
+  "version": "0.1.0",
+  "description": "A local token guard for Claude Code and Codex. Stop feeding your whole repo to AI.",
+  "type": "module",
+  "bin": {
+    "token-guard": "./bin/token-guard.js",
+    "tg": "./bin/token-guard.js"
+  },
+  "scripts": {
+    "start": "node ./bin/token-guard.js",
+    "test": "node ./test/smoke-test.js"
+  },
+  "keywords": [
+    "claude-code",
+    "codex",
+    "ai-coding",
+    "tokens",
+    "developer-tools",
+    "mcp",
+    "context-engineering"
+  ],
+  "author": "Coding Daddy",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  }
+}
