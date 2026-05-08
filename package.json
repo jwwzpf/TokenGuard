@@ -1,6 +1,6 @@
 {
   "name": "token-guard",
-  "version": "0.3.0-preview.1",
+  "version": "0.3.0-preview.2",
   "description": "A local-first context budget guard for Claude Code and Codex. Stop feeding your whole repo to AI.",
   "type": "module",
   "bin": {
@@ -29,7 +29,8 @@
     "local-first",
     "ai-agent",
     "symbol-index",
-    "precision-context"
+    "precision-context",
+    "autopilot-context"
   ],
   "author": "Coding Daddy",
   "license": "Apache-2.0",
