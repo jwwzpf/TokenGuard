@@ -15,6 +15,10 @@ import {
   formatSmartReadResult,
   formatFindResults
 } from '../lib/precision.js';
+import {
+  buildContextForFile,
+  formatContextResult
+} from '../lib/context-router.js';
 
 const [, , cmd, ...args] = process.argv;
 
@@ -39,6 +43,9 @@ async function main() {
         return cmdDoctor(projectRoot);
       case 'estimate':
         return cmdEstimate(projectRoot);
+      case 'ctx':
+      case 'context':
+        return cmdContext(projectRoot, args);
       case 'index':
         return cmdIndex(projectRoot);
       case 'find':
@@ -75,11 +82,12 @@ async function main() {
 
 function cmdInstall(projectRoot, args) {
   const observe = args.includes('--observe');
+  const auto = args.includes('--auto');
   const active = args.includes('--active');
   const noClaude = args.includes('--no-claude');
   const noCodex = args.includes('--no-codex');
 
-  const mode = active ? 'active' : observe ? 'observe' : undefined;
+  const mode = auto ? 'auto' : active ? 'active' : observe ? 'observe' : undefined;
   const { paths, config } = install(projectRoot, {
     mode,
     claude: !noClaude,
@@ -99,9 +107,8 @@ function cmdInstall(projectRoot, args) {
   }
 
   console.log(`Reports: ${path.relative(projectRoot, paths.reports)}/`);
-  console.log('Default mode is observe. Token Guard will not block reads unless you switch to active/strict.');
+  console.log('Default mode is observe. Token Guard will not block reads unless you switch to auto/active/strict.');
   console.log('Run `token-guard doctor` to verify the installation.');
-  console.log('Run `token-guard index` to build a local symbol index.');
   console.log('Run `token-guard report` anytime to generate your Savings Report.');
 }
 
@@ -187,6 +194,31 @@ function cmdEstimate(projectRoot) {
   }
 }
 
+function cmdContext(projectRoot, args) {
+  ensureProjectFiles(projectRoot);
+
+  const file = args.find(arg => !arg.startsWith('--') && !arg.includes(':'));
+
+  if (!file) {
+    console.error('Usage: token-guard ctx <file> [--focus NAME] [--lines A:B] [--max-tokens N]');
+    process.exitCode = 1;
+    return;
+  }
+
+  const options = parseOptions(args);
+  const config = loadConfig(projectRoot);
+
+  const result = buildContextForFile(projectRoot, file, {
+    ...options,
+    config,
+    maxTokens: options.maxTokens || config.thresholds?.precisionReadMaxTokens
+  });
+
+  console.log(formatContextResult(result, {
+    includeLanguagePolicy: false
+  }));
+}
+
 function cmdIndex(projectRoot) {
   ensureProjectFiles(projectRoot);
 
@@ -194,7 +226,7 @@ function cmdIndex(projectRoot) {
   const index = buildSymbolIndex(projectRoot, config);
   const paths = getPaths(projectRoot);
 
-  console.log(`Token Guard symbol index generated.`);
+  console.log('Token Guard symbol index generated.');
   console.log(`Files indexed: ${index.files.length.toLocaleString('en-US')}`);
   console.log(`Symbols found: ${index.symbols.length.toLocaleString('en-US')}`);
   console.log(`Index: ${path.relative(projectRoot, paths.symbolsJson)}`);
@@ -256,7 +288,7 @@ function cmdSummarize(projectRoot, args) {
 
   const result = summarizeFile(projectRoot, file);
 
-  console.log(`Token Guard summary generated.`);
+  console.log('Token Guard summary generated.');
   console.log(`File: ${result.file}`);
   console.log(`Tokens: ${result.tokens.toLocaleString('en-US')}`);
   console.log(`Symbols: ${result.symbols.toLocaleString('en-US')}`);
@@ -291,25 +323,47 @@ function parseOptions(args) {
   for (let i = 0; i < args.length; i += 1) {
     const arg = args[i];
 
-    if (arg === '--symbol') {
+    if (arg === '--focus') {
+      options.focus = args[i + 1];
       options.symbol = args[i + 1];
-      i += 1;
-      continue;
-    }
-
-    if (arg.startsWith('--symbol=')) {
-      options.symbol = arg.slice('--symbol='.length);
-      continue;
-    }
-
-    if (arg === '--section') {
       options.section = args[i + 1];
       i += 1;
       continue;
     }
 
+    if (arg.startsWith('--focus=')) {
+      const value = arg.slice('--focus='.length);
+      options.focus = value;
+      options.symbol = value;
+      options.section = value;
+      continue;
+    }
+
+    if (arg === '--symbol') {
+      options.symbol = args[i + 1];
+      options.focus = args[i + 1];
+      i += 1;
+      continue;
+    }
+
+    if (arg.startsWith('--symbol=')) {
+      const value = arg.slice('--symbol='.length);
+      options.symbol = value;
+      options.focus = value;
+      continue;
+    }
+
+    if (arg === '--section') {
+      options.section = args[i + 1];
+      options.focus = args[i + 1];
+      i += 1;
+      continue;
+    }
+
     if (arg.startsWith('--section=')) {
-      options.section = arg.slice('--section='.length);
+      const value = arg.slice('--section='.length);
+      options.section = value;
+      options.focus = value;
       continue;
     }
 
@@ -355,17 +409,22 @@ function printHelp() {
 Stop feeding your whole repo to AI.
 
 Usage:
-  token-guard install [--observe|--active] [--no-claude] [--no-codex]
+  token-guard install [--observe|--auto|--active] [--no-claude] [--no-codex]
   token-guard doctor
   token-guard status
   token-guard enable
   token-guard disable
-  token-guard mode observe|active|edit|strict
+  token-guard mode observe|auto|active|edit|strict
 
-Context tools:
+Main agent-facing context command:
+  tg ctx <file>
+  tg ctx <file> --focus <symbol-or-topic>
+  tg ctx <file> --lines A:B
+
+Advanced context tools:
   token-guard index
   token-guard find <symbol-or-query>
-  token-guard read <file> [--symbol NAME] [--section NAME] [--lines A:B] [--max-tokens N]
+  token-guard read <file> [--symbol NAME] [--section NAME] [--lines A:B]
   token-guard summarize <file>
 
 Reports:
@@ -381,8 +440,8 @@ Escape hatch:
 Default mode is observe:
   Token Guard records waste and adds guidance, but does not block reads.
 
-Active mode:
-  Token Guard may ask/block obvious huge/generated/log file reads.
+Auto mode:
+  Token Guard may automatically replace high-cost full-file reads with lightweight context.
 
 Trust model:
   Local-first. No daemon. No cloud backend. No code upload. No API calls.
