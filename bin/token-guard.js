@@ -7,6 +7,14 @@ import { handleHook } from '../lib/hook-handler.js';
 import { generateReport, openReport, openFolder } from '../lib/report.js';
 import { scanProject } from '../lib/token-utils.js';
 import { runDoctor, formatDoctor } from '../lib/doctor.js';
+import {
+  buildSymbolIndex,
+  findSymbols,
+  smartRead,
+  summarizeFile,
+  formatSmartReadResult,
+  formatFindResults
+} from '../lib/precision.js';
 
 const [, , cmd, ...args] = process.argv;
 
@@ -31,6 +39,14 @@ async function main() {
         return cmdDoctor(projectRoot);
       case 'estimate':
         return cmdEstimate(projectRoot);
+      case 'index':
+        return cmdIndex(projectRoot);
+      case 'find':
+        return cmdFind(projectRoot, args);
+      case 'read':
+        return cmdRead(projectRoot, args);
+      case 'summarize':
+        return cmdSummarize(projectRoot, args);
       case 'report':
         return cmdReport(projectRoot);
       case 'open-report':
@@ -85,6 +101,7 @@ function cmdInstall(projectRoot, args) {
   console.log(`Reports: ${path.relative(projectRoot, paths.reports)}/`);
   console.log('Default mode is observe. Token Guard will not block reads unless you switch to active/strict.');
   console.log('Run `token-guard doctor` to verify the installation.');
+  console.log('Run `token-guard index` to build a local symbol index.');
   console.log('Run `token-guard report` anytime to generate your Savings Report.');
 }
 
@@ -93,7 +110,7 @@ function cmdUninstall(projectRoot) {
 
   console.log('Token Guard hooks/instructions disabled.');
   console.log(`Local data kept at ${path.relative(projectRoot, paths.base)}/`);
-  console.log('Delete that folder manually if you want to remove reports, memory, and the savings ledger.');
+  console.log('Delete that folder manually if you want to remove reports, memory, summaries, index, and the savings ledger.');
 }
 
 function cmdEnable(projectRoot) {
@@ -138,9 +155,11 @@ function cmdStatus(projectRoot) {
   console.log(`Mode: ${config.mode}`);
   console.log(`Soft threshold: ${config.thresholds.softTokens.toLocaleString('en-US')} tokens`);
   console.log(`Hard threshold: ${config.thresholds.hardTokens.toLocaleString('en-US')} tokens`);
+  console.log(`Precision read max: ${config.thresholds.precisionReadMaxTokens.toLocaleString('en-US')} tokens`);
   console.log(`Local folder: ${path.relative(projectRoot, paths.base)}/`);
   console.log(`Claude settings: ${fs.existsSync(paths.claudeSettingsLocal) ? 'present' : 'not found'}`);
   console.log(`AGENTS.md: ${fs.existsSync(paths.agents) ? 'present' : 'not found'}`);
+  console.log(`Symbol index: ${fs.existsSync(paths.symbolsJson) ? 'present' : 'not found'}`);
   console.log('Background daemon: not running. Token Guard only runs when hooks/instructions trigger it.');
 }
 
@@ -168,6 +187,83 @@ function cmdEstimate(projectRoot) {
   }
 }
 
+function cmdIndex(projectRoot) {
+  ensureProjectFiles(projectRoot);
+
+  const config = loadConfig(projectRoot);
+  const index = buildSymbolIndex(projectRoot, config);
+  const paths = getPaths(projectRoot);
+
+  console.log(`Token Guard symbol index generated.`);
+  console.log(`Files indexed: ${index.files.length.toLocaleString('en-US')}`);
+  console.log(`Symbols found: ${index.symbols.length.toLocaleString('en-US')}`);
+  console.log(`Index: ${path.relative(projectRoot, paths.symbolsJson)}`);
+}
+
+function cmdFind(projectRoot, args) {
+  ensureProjectFiles(projectRoot);
+
+  const query = args.find(arg => !arg.startsWith('--'));
+
+  if (!query) {
+    console.error('Usage: token-guard find <symbol-or-query>');
+    process.exitCode = 1;
+    return;
+  }
+
+  const config = loadConfig(projectRoot);
+  const results = findSymbols(projectRoot, query, {
+    config,
+    rebuild: args.includes('--rebuild')
+  });
+
+  console.log(formatFindResults(results));
+}
+
+function cmdRead(projectRoot, args) {
+  ensureProjectFiles(projectRoot);
+
+  const file = args.find(arg => !arg.startsWith('--') && !arg.includes(':'));
+
+  if (!file) {
+    console.error('Usage: token-guard read <file> [--symbol NAME] [--section NAME] [--lines A:B] [--max-tokens N]');
+    process.exitCode = 1;
+    return;
+  }
+
+  const options = parseOptions(args);
+  const config = loadConfig(projectRoot);
+
+  const result = smartRead(projectRoot, file, {
+    ...options,
+    maxTokens: options.maxTokens || config.thresholds?.precisionReadMaxTokens,
+    contextLines: options.contextLines || config.thresholds?.symbolContextLines
+  });
+
+  console.log(formatSmartReadResult(result));
+}
+
+function cmdSummarize(projectRoot, args) {
+  ensureProjectFiles(projectRoot);
+
+  const file = args.find(arg => !arg.startsWith('--'));
+
+  if (!file) {
+    console.error('Usage: token-guard summarize <file>');
+    process.exitCode = 1;
+    return;
+  }
+
+  const result = summarizeFile(projectRoot, file);
+
+  console.log(`Token Guard summary generated.`);
+  console.log(`File: ${result.file}`);
+  console.log(`Tokens: ${result.tokens.toLocaleString('en-US')}`);
+  console.log(`Symbols: ${result.symbols.toLocaleString('en-US')}`);
+  console.log(`Sections: ${result.sections.toLocaleString('en-US')}`);
+  console.log(`Summary: ${path.relative(projectRoot, result.summaryPath)}`);
+}
+
 function cmdReport(projectRoot) {
   const { html, svg, model } = generateReport(projectRoot);
 
@@ -189,6 +285,70 @@ function cmdOpenFolder(projectRoot) {
   console.log('Opening TokenGuard folder...');
 }
 
+function parseOptions(args) {
+  const options = {};
+
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i];
+
+    if (arg === '--symbol') {
+      options.symbol = args[i + 1];
+      i += 1;
+      continue;
+    }
+
+    if (arg.startsWith('--symbol=')) {
+      options.symbol = arg.slice('--symbol='.length);
+      continue;
+    }
+
+    if (arg === '--section') {
+      options.section = args[i + 1];
+      i += 1;
+      continue;
+    }
+
+    if (arg.startsWith('--section=')) {
+      options.section = arg.slice('--section='.length);
+      continue;
+    }
+
+    if (arg === '--lines') {
+      options.lines = args[i + 1];
+      i += 1;
+      continue;
+    }
+
+    if (arg.startsWith('--lines=')) {
+      options.lines = arg.slice('--lines='.length);
+      continue;
+    }
+
+    if (arg === '--max-tokens') {
+      options.maxTokens = Number(args[i + 1]);
+      i += 1;
+      continue;
+    }
+
+    if (arg.startsWith('--max-tokens=')) {
+      options.maxTokens = Number(arg.slice('--max-tokens='.length));
+      continue;
+    }
+
+    if (arg === '--context-lines') {
+      options.contextLines = Number(args[i + 1]);
+      i += 1;
+      continue;
+    }
+
+    if (arg.startsWith('--context-lines=')) {
+      options.contextLines = Number(arg.slice('--context-lines='.length));
+    }
+  }
+
+  return options;
+}
+
 function printHelp() {
   console.log(`Token Guard
 
@@ -201,22 +361,28 @@ Usage:
   token-guard enable
   token-guard disable
   token-guard mode observe|active|edit|strict
-  token-guard allow <file> --once
+
+Context tools:
+  token-guard index
+  token-guard find <symbol-or-query>
+  token-guard read <file> [--symbol NAME] [--section NAME] [--lines A:B] [--max-tokens N]
+  token-guard summarize <file>
+
+Reports:
   token-guard estimate
   token-guard report
   token-guard open-report
   token-guard open-folder
-  token-guard uninstall
+
+Escape hatch:
+  token-guard allow <file> --once
+  or write @tg:force-read <file> in your next prompt.
 
 Default mode is observe:
   Token Guard records waste and adds guidance, but does not block reads.
 
 Active mode:
   Token Guard may ask/block obvious huge/generated/log file reads.
-
-Escape hatch:
-  token-guard allow path/to/file --once
-  or write @tg:force-read path/to/file in your next prompt.
 
 Trust model:
   Local-first. No daemon. No cloud backend. No code upload. No API calls.
