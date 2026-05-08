@@ -40,6 +40,7 @@ try {
   assert.ok(fs.existsSync(path.join(tmp, 'AGENTS.md')));
 
   const config = loadConfig(tmp);
+
   assert.equal(config.thresholds.softTokens, 25000);
   assert.equal(config.mode, 'observe');
 
@@ -61,10 +62,15 @@ try {
     }
   });
 
+  assert.ok(
+    observeRead.hookSpecificOutput.additionalContext.includes('observe mode'),
+    'observe mode should provide context'
+  );
+
   assert.equal(
     observeRead.hookSpecificOutput.permissionDecision,
-    'allow',
-    'observe mode should not block large source files'
+    undefined,
+    'observe mode must not return permissionDecision=allow because that bypasses normal Claude permissions'
   );
 
   setMode(tmp, 'active');
@@ -143,8 +149,13 @@ try {
   });
 
   assert.ok(
-    bashTrim.hookSpecificOutput.additionalContext.includes('trimmed noisy Bash output'),
+    bashTrim.additionalContext.includes('trimmed noisy Bash output'),
     'bash output should be trimmed'
+  );
+
+  assert.ok(
+    bashTrim.updatedToolOutput.stdout.includes('Token Guard: trimmed'),
+    'PostToolUse should provide top-level updatedToolOutput'
   );
 
   appendEvent(tmp, {
