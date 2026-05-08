@@ -9,6 +9,12 @@ import { runHook } from '../lib/hook-handler.js';
 import { appendEvent } from '../lib/ledger.js';
 import { generateReport } from '../lib/report.js';
 import { runDoctor } from '../lib/doctor.js';
+import {
+  buildSymbolIndex,
+  findSymbols,
+  smartRead,
+  summarizeFile
+} from '../lib/precision.js';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'token-guard-smoke-'));
 
@@ -16,7 +22,41 @@ try {
   fs.writeFileSync(path.join(tmp, 'small.js'), 'console.log("small");\n');
 
   fs.mkdirSync(path.join(tmp, 'src'), { recursive: true });
-  fs.writeFileSync(path.join(tmp, 'src', 'large-source.js'), 'a'.repeat(120000));
+
+  fs.writeFileSync(
+    path.join(tmp, 'src', 'large-source.js'),
+    `
+export function buildCreaseEnergy(input) {
+  const base = input.base || 0;
+  const modifier = input.modifier || 1;
+  return base * modifier;
+}
+
+export function unrelatedFunction() {
+  return "ignore me";
+}
+
+export class PalmAnalyzer {
+  analyze() {
+    return buildCreaseEnergy({ base: 10, modifier: 2 });
+  }
+}
+`.repeat(300)
+  );
+
+  fs.writeFileSync(
+    path.join(tmp, 'README.md'),
+    `# Demo
+
+## Installation
+
+Run install.
+
+## Usage
+
+Run usage.
+`
+  );
 
   fs.mkdirSync(path.join(tmp, 'build'), { recursive: true });
   fs.writeFileSync(path.join(tmp, 'build', 'bundle.js'), 'b'.repeat(300000));
@@ -124,7 +164,49 @@ try {
   const config = loadConfig(tmp);
 
   assert.equal(config.thresholds.softTokens, 25000);
+  assert.equal(config.thresholds.precisionReadMaxTokens, 6000);
   assert.equal(config.mode, 'observe');
+
+  const index = buildSymbolIndex(tmp, config);
+
+  assert.ok(index.symbols.length > 0, 'symbol index should detect symbols');
+
+  const found = findSymbols(tmp, 'buildCreaseEnergy', {
+    config
+  });
+
+  assert.ok(found.length > 0, 'find should locate buildCreaseEnergy');
+  assert.ok(found[0].file.includes('large-source.js'));
+
+  const symbolRead = smartRead(tmp, 'src/large-source.js', {
+    symbol: 'buildCreaseEnergy',
+    maxTokens: 1200
+  });
+
+  assert.equal(symbolRead.kind, 'symbol');
+  assert.ok(symbolRead.text.includes('buildCreaseEnergy'));
+  assert.ok(symbolRead.returnedTokens < symbolRead.originalTokens);
+
+  const lineRead = smartRead(tmp, 'src/large-source.js', {
+    lines: '1:8',
+    maxTokens: 1200
+  });
+
+  assert.equal(lineRead.kind, 'lines');
+  assert.ok(lineRead.text.includes('buildCreaseEnergy'));
+
+  const sectionRead = smartRead(tmp, 'README.md', {
+    section: 'Installation',
+    maxTokens: 1200
+  });
+
+  assert.equal(sectionRead.kind, 'section');
+  assert.ok(sectionRead.text.includes('Run install'));
+
+  const fileSummary = summarizeFile(tmp, 'src/large-source.js');
+
+  assert.ok(fs.existsSync(fileSummary.summaryPath));
+  assert.ok(fileSummary.symbols > 0);
 
   const selfRead = runHook('PreToolUse', {
     cwd: tmp,
