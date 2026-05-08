@@ -6,6 +6,7 @@ import { ensureProjectFiles, getPaths, loadConfig } from '../lib/project.js';
 import { handleHook } from '../lib/hook-handler.js';
 import { generateReport, openReport, openFolder } from '../lib/report.js';
 import { scanProject } from '../lib/token-utils.js';
+import { runDoctor, formatDoctor } from '../lib/doctor.js';
 
 const [, , cmd, ...args] = process.argv;
 
@@ -26,6 +27,8 @@ async function main() {
         return cmdMode(projectRoot, args[0]);
       case 'status':
         return cmdStatus(projectRoot);
+      case 'doctor':
+        return cmdDoctor(projectRoot);
       case 'estimate':
         return cmdEstimate(projectRoot);
       case 'report':
@@ -81,6 +84,7 @@ function cmdInstall(projectRoot, args) {
 
   console.log(`Reports: ${path.relative(projectRoot, paths.reports)}/`);
   console.log('Default mode is observe. Token Guard will not block reads unless you switch to active/strict.');
+  console.log('Run `token-guard doctor` to verify the installation.');
   console.log('Run `token-guard report` anytime to generate your Savings Report.');
 }
 
@@ -140,6 +144,16 @@ function cmdStatus(projectRoot) {
   console.log('Background daemon: not running. Token Guard only runs when hooks/instructions trigger it.');
 }
 
+function cmdDoctor(projectRoot) {
+  const result = runDoctor(projectRoot);
+
+  console.log(formatDoctor(result));
+
+  if (!result.ok) {
+    process.exitCode = 1;
+  }
+}
+
 function cmdEstimate(projectRoot) {
   ensureProjectFiles(projectRoot);
 
@@ -182,6 +196,7 @@ Stop feeding your whole repo to AI.
 
 Usage:
   token-guard install [--observe|--active] [--no-claude] [--no-codex]
+  token-guard doctor
   token-guard status
   token-guard enable
   token-guard disable
@@ -202,6 +217,9 @@ Active mode:
 Escape hatch:
   token-guard allow path/to/file --once
   or write @tg:force-read path/to/file in your next prompt.
+
+Trust model:
+  Local-first. No daemon. No cloud backend. No code upload. No API calls.
 `);
 }
 
