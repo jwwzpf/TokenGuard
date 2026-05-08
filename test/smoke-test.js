@@ -4,10 +4,11 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { install, setMode, allowOnce } from '../lib/installer.js';
-import { loadConfig } from '../lib/project.js';
+import { loadConfig, getPaths } from '../lib/project.js';
 import { runHook } from '../lib/hook-handler.js';
 import { appendEvent } from '../lib/ledger.js';
 import { generateReport } from '../lib/report.js';
+import { runDoctor } from '../lib/doctor.js';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'token-guard-smoke-'));
 
@@ -28,6 +29,82 @@ try {
     ).join('\n')
   );
 
+  const transcriptPath = path.join(tmp, 'fake-transcript.jsonl');
+
+  fs.writeFileSync(
+    transcriptPath,
+    [
+      {
+        type: 'user',
+        message: {
+          role: 'user',
+          content: 'Fix Token Guard handoff generation and run tests.'
+        }
+      },
+      {
+        type: 'assistant',
+        message: {
+          role: 'assistant',
+          content: [
+            {
+              type: 'tool_use',
+              name: 'Read',
+              input: {
+                file_path: 'lib/hook-handler.js'
+              }
+            }
+          ]
+        }
+      },
+      {
+        type: 'assistant',
+        message: {
+          role: 'assistant',
+          content: [
+            {
+              type: 'tool_use',
+              name: 'Edit',
+              input: {
+                file_path: 'lib/hook-handler.js',
+                old_string: 'old',
+                new_string: 'new'
+              }
+            }
+          ]
+        }
+      },
+      {
+        type: 'assistant',
+        message: {
+          role: 'assistant',
+          content: [
+            {
+              type: 'tool_use',
+              name: 'Bash',
+              input: {
+                command: 'npm test'
+              }
+            }
+          ]
+        }
+      },
+      {
+        type: 'user',
+        message: {
+          role: 'user',
+          content: [
+            {
+              type: 'tool_result',
+              content: 'ERROR expected true received false'
+            }
+          ]
+        }
+      }
+    ]
+      .map(row => JSON.stringify(row))
+      .join('\n')
+  );
+
   const installed = install(tmp, {
     mode: undefined,
     claude: true,
@@ -38,6 +115,11 @@ try {
   assert.ok(fs.existsSync(path.join(tmp, 'TokenGuard', 'config.json')));
   assert.ok(fs.existsSync(path.join(tmp, '.claude', 'settings.local.json')));
   assert.ok(fs.existsSync(path.join(tmp, 'AGENTS.md')));
+
+  const doctor = runDoctor(tmp);
+
+  assert.equal(doctor.ok, true, 'doctor should pass after install');
+  assert.equal(doctor.failed, 0, 'doctor should have no failed checks');
 
   const config = loadConfig(tmp);
 
@@ -158,6 +240,23 @@ try {
     'PostToolUse should provide top-level updatedToolOutput'
   );
 
+  const stopResult = runHook('Stop', {
+    cwd: tmp,
+    hook_event_name: 'Stop',
+    transcript_path: transcriptPath,
+    stop_hook_active: false
+  });
+
+  assert.deepEqual(stopResult, {});
+
+  const paths = getPaths(tmp);
+  const handoff = fs.readFileSync(paths.handoff, 'utf8');
+
+  assert.ok(handoff.includes('Fix Token Guard handoff generation'));
+  assert.ok(handoff.includes('lib/hook-handler.js'));
+  assert.ok(handoff.includes('npm test'));
+  assert.ok(handoff.includes('ERROR expected true received false'));
+
   appendEvent(tmp, {
     type: 'read_guard_block',
     file: 'build/bundle.js',
@@ -188,6 +287,7 @@ try {
   assert.ok(report.model.netSavingsTokens > 0);
   assert.ok(report.model.repeatedBlocks >= 1);
   assert.ok(report.model.fallbackToolCalls >= 1);
+  assert.ok(report.model.handoffsGenerated >= 1);
 
   console.log('Token Guard smoke test passed.');
   console.log(tmp);
