@@ -15,6 +15,10 @@ import {
   smartRead,
   summarizeFile
 } from '../lib/precision.js';
+import {
+  buildContextForFile,
+  formatContextResult
+} from '../lib/context-router.js';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'token-guard-smoke-'));
 
@@ -187,6 +191,19 @@ Run usage.
   assert.ok(symbolRead.text.includes('buildCreaseEnergy'));
   assert.ok(symbolRead.returnedTokens < symbolRead.originalTokens);
 
+  const ctxRead = buildContextForFile(tmp, 'src/large-source.js', {
+    focus: 'buildCreaseEnergy',
+    maxTokens: 1200
+  });
+
+  assert.ok(ctxRead.text.includes('buildCreaseEnergy'));
+  assert.ok(ctxRead.returnedTokens < ctxRead.originalTokens);
+
+  const ctxFormatted = formatContextResult(ctxRead);
+
+  assert.ok(ctxFormatted.includes('Language policy'));
+  assert.ok(ctxFormatted.includes('tg ctx'));
+
   const lineRead = smartRead(tmp, 'src/large-source.js', {
     lines: '1:8',
     maxTokens: 1200
@@ -231,10 +248,36 @@ Run usage.
     'observe mode should provide context'
   );
 
+  assert.ok(
+    observeRead.hookSpecificOutput.additionalContext.includes('Language policy'),
+    'agent-facing notices should include language policy'
+  );
+
   assert.equal(
     observeRead.hookSpecificOutput.permissionDecision,
     undefined,
     'observe mode must not return permissionDecision=allow because that bypasses normal Claude permissions'
+  );
+
+  setMode(tmp, 'auto');
+
+  const autoLargeSource = runHook('PreToolUse', {
+    cwd: tmp,
+    toolName: 'Read',
+    tool_input: {
+      file_path: 'src/large-source.js'
+    }
+  });
+
+  assert.equal(
+    autoLargeSource.hookSpecificOutput.permissionDecision,
+    'deny',
+    'auto mode should replace expensive full reads with autopilot context'
+  );
+
+  assert.ok(
+    autoLargeSource.hookSpecificOutput.additionalContext.includes('Token Guard autopilot context'),
+    'auto mode should inject lightweight context'
   );
 
   setMode(tmp, 'active');
