@@ -1,4 +1,6 @@
 node_modules/
 TokenGuard/
+CLAUDE.local.md
+.claude/settings.local.json
 .DS_Store
 npm-debug.log*
