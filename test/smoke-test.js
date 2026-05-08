@@ -45,7 +45,7 @@ export class PalmAnalyzer {
     return buildCreaseEnergy({ base: 10, modifier: 2 });
   }
 }
-`.repeat(300)
+`.repeat(500)
   );
 
   fs.writeFileSync(
