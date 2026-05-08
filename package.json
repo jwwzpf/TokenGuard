@@ -1,7 +1,7 @@
 {
   "name": "token-guard",
-  "version": "0.2.0",
-  "description": "A local token guard for Claude Code and Codex. Stop feeding your whole repo to AI.",
+  "version": "0.2.3",
+  "description": "A local-first context budget guard for Claude Code and Codex. Stop feeding your whole repo to AI.",
   "type": "module",
   "bin": {
     "token-guard": "./bin/token-guard.js",
@@ -11,6 +11,13 @@
     "start": "node ./bin/token-guard.js",
     "test": "node ./test/smoke-test.js"
   },
+  "files": [
+    "bin/",
+    "lib/",
+    "test/",
+    "README.md",
+    "LICENSE"
+  ],
   "keywords": [
     "claude-code",
     "codex",
@@ -18,10 +25,20 @@
     "tokens",
     "developer-tools",
     "mcp",
-    "context-engineering"
+    "context-engineering",
+    "local-first",
+    "ai-agent"
   ],
   "author": "Coding Daddy",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jwwzpf/TokenGuard.git"
+  },
+  "bugs": {
+    "url": "https://github.com/jwwzpf/TokenGuard/issues"
+  },
+  "homepage": "https://github.com/jwwzpf/TokenGuard#readme",
   "engines": {
     "node": ">=18"
   }
