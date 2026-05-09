@@ -30,7 +30,7 @@ async function main() {
       case 'install':
         return cmdInstall(projectRoot, args);
       case 'uninstall':
-        return cmdUninstall(projectRoot);
+        return cmdUninstall(projectRoot, args);
       case 'enable':
         return cmdEnable(projectRoot);
       case 'disable':
@@ -112,12 +112,30 @@ function cmdInstall(projectRoot, args) {
   console.log('Run `token-guard report` anytime to generate your Savings Report.');
 }
 
-function cmdUninstall(projectRoot) {
-  const { paths } = uninstall(projectRoot);
+function cmdUninstall(projectRoot, args) {
+  const keepData = args.includes('--keep-data');
+  const { removed } = uninstall(projectRoot, { keepData });
 
-  console.log('Token Guard hooks/instructions disabled.');
-  console.log(`Local data kept at ${path.relative(projectRoot, paths.base)}/`);
-  console.log('Delete that folder manually if you want to remove reports, memory, summaries, index, and the savings ledger.');
+  console.log(keepData
+    ? 'Token Guard hooks/instructions disabled. Local data kept.'
+    : 'Token Guard fully uninstalled from this project.');
+
+  if (removed?.length) {
+    console.log('');
+    console.log('Removed/cleaned:');
+
+    for (const item of removed) {
+      console.log(`- ${item}`);
+    }
+  } else {
+    console.log('No Token Guard files or hooks were found.');
+  }
+
+  if (!keepData) {
+    console.log('');
+    console.log('Project cleanup complete. You can reinstall with:');
+    console.log('  token-guard install --observe');
+  }
 }
 
 function cmdEnable(projectRoot) {
@@ -142,7 +160,7 @@ function cmdMode(projectRoot, mode) {
 }
 
 function cmdAllow(projectRoot, args) {
-  const file = args.find(arg => !arg.startsWith('--')) || '*';
+  const file = args.filter(arg => !arg.startsWith('--')).at(-1) || '*';
   const config = allowOnce(projectRoot, file);
 
   console.log(`Token Guard will allow one full read for: ${file}`);
@@ -162,6 +180,7 @@ function cmdStatus(projectRoot) {
   console.log(`Mode: ${config.mode}`);
   console.log(`Soft threshold: ${config.thresholds.softTokens.toLocaleString('en-US')} tokens`);
   console.log(`Hard threshold: ${config.thresholds.hardTokens.toLocaleString('en-US')} tokens`);
+  console.log(`Narrow Read max: ${config.thresholds.narrowReadMaxLines.toLocaleString('en-US')} lines`);
   console.log(`Precision read max: ${config.thresholds.precisionReadMaxTokens.toLocaleString('en-US')} tokens`);
   console.log(`Local folder: ${path.relative(projectRoot, paths.base)}/`);
   console.log(`Claude settings: ${fs.existsSync(paths.claudeSettingsLocal) ? 'present' : 'not found'}`);
@@ -435,13 +454,16 @@ Reports:
 
 Escape hatch:
   token-guard allow <file> --once
+  token-guard allow --once <file>
   or write @tg:force-read <file> in your next prompt.
 
-Default mode is observe:
-  Token Guard records waste and adds guidance, but does not block reads.
+Uninstall:
+  token-guard uninstall
+  token-guard uninstall --keep-data
 
-Auto mode:
-  Token Guard may automatically replace high-cost full-file reads with lightweight context.
+Default mode is observe:
+  Token Guard records waste, keeps handoff memory, and trims noisy Bash output.
+  It does not block Read calls.
 
 Trust model:
   Local-first. No daemon. No cloud backend. No code upload. No API calls.
