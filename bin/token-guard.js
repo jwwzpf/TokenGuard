@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import fs from 'node:fs';
 import path from 'node:path';
-import { install, uninstall, setEnabled, setMode, allowOnce } from '../lib/installer.js';
+import { install, upgrade, uninstall, setEnabled, setMode, allowOnce } from '../lib/installer.js';
 import { ensureProjectFiles, getPaths, loadConfig } from '../lib/project.js';
 import { handleHook } from '../lib/hook-handler.js';
 import { generateReport, openReport, openFolder } from '../lib/report.js';
@@ -18,6 +18,7 @@ async function main() {
   try {
     switch (cmd) {
       case 'install': return cmdInstall(projectRoot, args);
+      case 'upgrade': return cmdUpgrade(projectRoot, args);
       case 'uninstall': return cmdUninstall(projectRoot, args);
       case 'enable': return cmdEnable(projectRoot);
       case 'disable': return cmdDisable(projectRoot);
@@ -65,6 +66,33 @@ function cmdInstall(projectRoot, args) {
   console.log(`Reports: ${path.relative(projectRoot, paths.reports)}/`);
   console.log('Run `token-guard doctor` to verify the installation.');
   console.log('Run `token-guard report` anytime to generate your Savings Report.');
+}
+
+function cmdUpgrade(projectRoot, args) {
+  const noClaude = args.includes('--no-claude');
+  const noCodex = args.includes('--no-codex');
+
+  const result = upgrade(projectRoot, {
+    claude: !noClaude,
+    codex: !noCodex
+  });
+
+  console.log(`Token Guard upgraded in ${projectRoot}`);
+  console.log('Smart Savings: on');
+
+  if (result.preservedData) {
+    console.log('Local TokenGuard data preserved.');
+  }
+
+  if (!noClaude) {
+    console.log(`Claude Code hooks: refreshed in ${path.relative(projectRoot, result.paths.claudeSettingsLocal)}`);
+  }
+
+  if (!noCodex) {
+    console.log(`Codex desktop instructions: refreshed in ${path.relative(projectRoot, result.paths.agents)}`);
+  }
+
+  console.log('Project rules refreshed. Run `token-guard doctor` to verify.');
 }
 
 function cmdUninstall(projectRoot, args) {
@@ -155,6 +183,7 @@ Usage:
   token-guard install [--no-claude] [--no-codex]
   token-guard doctor
   token-guard status
+  token-guard upgrade
   token-guard report
   token-guard open-report
   token-guard uninstall
@@ -176,6 +205,9 @@ Advanced tools:
   token-guard allow <file> --once
   token-guard disable
   token-guard enable
+
+Update current project:
+  After updating the global npm package, run \`token-guard upgrade\` inside projects that need refreshed hooks/rules.
 
 Default behavior:
   Smart Savings is automatic. There are no user-facing modes.
