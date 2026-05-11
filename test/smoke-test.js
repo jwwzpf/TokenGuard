@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { install, uninstall, allowOnce } from '../lib/installer.js';
+import { install, upgrade, uninstall, allowOnce } from '../lib/installer.js';
 import { loadConfig, getPaths } from '../lib/project.js';
 import { runHook } from '../lib/hook-handler.js';
 import { runDoctor } from '../lib/doctor.js';
@@ -25,6 +25,13 @@ try {
 
   const doctor = runDoctor(tmp);
   assert.equal(doctor.failed, 0);
+
+  const upgraded = upgrade(tmp, { claude: true, codex: true });
+  assert.equal(upgraded.upgraded, true);
+  assert.equal(upgraded.preservedData, true);
+  assert.equal(fs.existsSync(path.join(tmp, 'TokenGuard', 'config.json')), true);
+  assert.ok(fs.readFileSync(path.join(tmp, 'CLAUDE.local.md'), 'utf8').includes('TOKEN_GUARD_START'));
+  assert.ok(fs.readFileSync(path.join(tmp, 'AGENTS.md'), 'utf8').includes('TOKEN_GUARD_START'));
 
   const config = loadConfig(tmp);
   assert.equal(config.thresholds.narrowReadMaxLines, 200);
@@ -106,7 +113,7 @@ try {
   const uninstallResult = uninstall(tmp);
   assert.ok(uninstallResult.removed.length > 0);
   assert.equal(fs.existsSync(path.join(tmp, 'TokenGuard')), false);
-  console.log('Token Guard v0.4.0 smoke test passed.');
+  console.log('Token Guard v0.4.1 smoke test passed.');
   console.log(tmp);
 } finally {
   // Keep temp folder for inspection.
