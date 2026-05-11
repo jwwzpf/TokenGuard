@@ -21,7 +21,8 @@ async function main() {
       case 'uninstall': return cmdUninstall(projectRoot, args);
       case 'enable': return cmdEnable(projectRoot);
       case 'disable': return cmdDisable(projectRoot);
-      case 'mode': return cmdMode(projectRoot, args[0]);
+      // Hidden backward-compatible command. Smart Savings is the only product-facing policy.
+      case 'mode': return cmdMode(projectRoot);
       case 'status': return cmdStatus(projectRoot);
       case 'doctor': return cmdDoctor(projectRoot);
       case 'estimate': return cmdEstimate(projectRoot);
@@ -53,20 +54,15 @@ async function main() {
 }
 
 function cmdInstall(projectRoot, args) {
-  const observe = args.includes('--observe');
-  const auto = args.includes('--auto');
-  const active = args.includes('--active');
   const noClaude = args.includes('--no-claude');
   const noCodex = args.includes('--no-codex');
-  const mode = auto ? 'auto' : active ? 'active' : observe ? 'observe' : undefined;
-  const { paths, config } = install(projectRoot, { mode, claude: !noClaude, codex: !noCodex });
+  const { paths } = install(projectRoot, { claude: !noClaude, codex: !noCodex });
   console.log(`Token Guard installed in ${projectRoot}`);
-  console.log(`Mode: ${config.mode}`);
+  console.log('Smart Savings: on');
   console.log(`Local folder: ${path.relative(projectRoot, paths.base)}/`);
   if (!noClaude) console.log(`Claude Code hooks: enabled in ${path.relative(projectRoot, paths.claudeSettingsLocal)}`);
   if (!noCodex) console.log(`Codex desktop instructions: enabled in ${path.relative(projectRoot, paths.agents)}`);
   console.log(`Reports: ${path.relative(projectRoot, paths.reports)}/`);
-  console.log('Safe mode is enabled by default. Token Guard will not block Read calls unless you explicitly switch modes.');
   console.log('Run `token-guard doctor` to verify the installation.');
   console.log('Run `token-guard report` anytime to generate your Savings Report.');
 }
@@ -78,9 +74,9 @@ function cmdUninstall(projectRoot, args) {
   if (removed?.length) { console.log('\nRemoved/cleaned:'); for (const item of removed) console.log(`- ${item}`); } else console.log('No Token Guard files or hooks were found.');
   if (!keepData) { console.log('\nProject cleanup complete. You can reinstall with:'); console.log('  token-guard install'); }
 }
-function cmdEnable(projectRoot) { const config = setEnabled(projectRoot, true); console.log(`Token Guard enabled. Mode: ${config.mode}`); }
+function cmdEnable(projectRoot) { const config = setEnabled(projectRoot, true); console.log(`Token Guard enabled. Smart Savings: ${config.policy?.strategy || 'smart'}`); }
 function cmdDisable(projectRoot) { setEnabled(projectRoot, false); console.log('Token Guard disabled. Hooks may still fire, but they will exit without doing work.'); }
-function cmdMode(projectRoot, mode) { if (!mode) { const config = loadConfig(projectRoot); console.log(`Current mode: ${config.mode}`); return; } const config = setMode(projectRoot, mode); console.log(`Token Guard mode set to ${config.mode}.`); }
+function cmdMode(projectRoot) { const config = setMode(projectRoot); console.log(`Token Guard uses one policy now: ${config.policy?.strategy || 'smart'}. No user-facing modes are required.`); }
 function cmdAllow(projectRoot, args) { const file = args.filter(arg => !arg.startsWith('--')).at(-1) || '*'; const config = allowOnce(projectRoot, file); console.log(`Token Guard will allow one full read for: ${file}`); console.log(`Remaining one-time force-read entries: ${(config.forceRead?.once || []).join(', ') || '(none)'}`); }
 
 function cmdStatus(projectRoot) {
@@ -90,11 +86,9 @@ function cmdStatus(projectRoot) {
   console.log('Token Guard status\n');
   console.log(`Project: ${projectRoot}`);
   console.log(`Enabled: ${config.enabled}`);
-  console.log(`Mode: ${config.mode}`);
-  console.log(`Signal mode: ${config.signal?.enabled !== false ? config.signal?.level || 'balanced' : 'off'}`);
+  console.log(`Smart Savings: ${config.policy?.strategy || 'smart'}`);
+  console.log(`Signal: ${config.signal?.enabled !== false ? config.signal?.level || 'balanced' : 'off'}`);
   console.log(`Long input digest: ${config.longInput?.enabled !== false ? 'enabled' : 'disabled'}`);
-  console.log(`Soft threshold: ${config.thresholds.softTokens.toLocaleString('en-US')} tokens`);
-  console.log(`Hard threshold: ${config.thresholds.hardTokens.toLocaleString('en-US')} tokens`);
   console.log(`Narrow Read max: ${config.thresholds.narrowReadMaxLines.toLocaleString('en-US')} lines`);
   console.log(`Precision read max: ${config.thresholds.precisionReadMaxTokens.toLocaleString('en-US')} tokens`);
   console.log(`Local folder: ${path.relative(projectRoot, paths.base)}/`);
@@ -120,7 +114,7 @@ function cmdFind(projectRoot, args) { ensureProjectFiles(projectRoot); const que
 function cmdRead(projectRoot, args) { ensureProjectFiles(projectRoot); const file = args.find(arg => !arg.startsWith('--') && !arg.includes(':')); if (!file) { console.error('Usage: token-guard read <file> [--symbol NAME] [--section NAME] [--around TEXT] [--lines A:B] [--diff]'); process.exitCode = 1; return; } const options = parseOptions(args); const config = loadConfig(projectRoot); const result = smartRead(projectRoot, file, { ...options, maxTokens: options.maxTokens || config.thresholds?.precisionReadMaxTokens, contextLines: options.contextLines || config.thresholds?.symbolContextLines }); console.log(formatSmartReadResult(result)); }
 function cmdSummarize(projectRoot, args) { ensureProjectFiles(projectRoot); const file = args.find(arg => !arg.startsWith('--')); if (!file) { console.error('Usage: token-guard summarize <file>'); process.exitCode = 1; return; } const result = summarizeFile(projectRoot, file); console.log('Token Guard summary generated.'); console.log(`File: ${result.file}`); console.log(`Tokens: ${result.tokens.toLocaleString('en-US')}`); console.log(`Symbols: ${result.symbols.toLocaleString('en-US')}`); console.log(`Sections: ${result.sections.toLocaleString('en-US')}`); console.log(`Summary: ${path.relative(projectRoot, result.summaryPath)}`); }
 function cmdEdit(projectRoot, args) { const file = args.find(arg => !arg.startsWith('--')); if (!file) { console.error('Usage: token-guard edit <file> --old TEXT --new TEXT [--all]'); process.exitCode = 1; return; } const options = parseOptions(args); const result = applyEdit(projectRoot, file, { ...options, all: args.includes('--all') }); console.log(`Token Guard edit applied: ${result.file}`); console.log(`Replacements: ${result.occurrences}`); }
-function cmdReport(projectRoot) { const { html, svg, model } = generateReport(projectRoot); console.log('Generated Savings Report:'); console.log(`- ${html}`); console.log(`- ${svg}`); console.log(`Tokens protected: ${Math.round(Math.max(model.netSavingsTokens, model.grossAvoidedTokens)).toLocaleString('en-US')}`); console.log(`Estimated net savings: ${Math.round(model.netSavingsTokens).toLocaleString('en-US')} tokens`); }
+function cmdReport(projectRoot) { const { html, svg, model } = generateReport(projectRoot); console.log('Generated Savings Report:'); console.log(`- ${html}`); console.log(`- ${svg}`); console.log(`Net saved after overhead: ${Math.round(model.netSavingsTokens).toLocaleString('en-US')} tokens`); console.log(`Potential avoidable context: ${Math.round(model.potentialWasteFlaggedTokens).toLocaleString('en-US')} tokens`); }
 function cmdOpenReport(projectRoot) { openReport(projectRoot); console.log('Opening latest Savings Report...'); }
 function cmdOpenFolder(projectRoot) { ensureProjectFiles(projectRoot); openFolder(projectRoot); console.log('Opening TokenGuard folder...'); }
 
@@ -155,49 +149,38 @@ function parseOptions(args) {
 function printHelp() {
   console.log(`Token Guard
 
-Stop feeding your whole repo to AI.
+Stop wasting tokens across the AI coding loop.
 
 Usage:
-  token-guard install [--auto|--active] [--no-claude] [--no-codex]
+  token-guard install [--no-claude] [--no-codex]
   token-guard doctor
   token-guard status
-  token-guard enable
-  token-guard disable
-  token-guard mode observe|auto|active|edit|strict
+  token-guard report
+  token-guard open-report
+  token-guard uninstall
 
-Main agent-facing context command:
+Agent-facing context tools:
   tg ctx <file>
   tg ctx <file> --focus <symbol-or-topic>
   tg ctx <file> --around <text> --context 10
   tg ctx <file> --lines A:B
   tg ctx <file> --diff
 
-Advanced context/edit tools:
+Advanced tools:
+  token-guard estimate
   token-guard index
   token-guard find <symbol-or-query>
   token-guard read <file> [--symbol NAME] [--section NAME] [--around TEXT] [--lines A:B] [--diff]
   token-guard summarize <file>
   token-guard edit <file> --old TEXT --new TEXT [--all]
-
-Reports:
-  token-guard estimate
-  token-guard report
-  token-guard open-report
-  token-guard open-folder
-
-Escape hatch:
   token-guard allow <file> --once
-  token-guard allow --once <file>
-  or write @tg:force-read <file> in your next prompt.
-
-Uninstall:
-  token-guard uninstall
-  token-guard uninstall --keep-data
+  token-guard disable
+  token-guard enable
 
 Default behavior:
-  Token Guard installs in safe mode.
-  It records savings, keeps handoff memory, digests long inputs, and trims noisy Bash output.
-  It does not block Read calls unless you explicitly switch modes.
+  Smart Savings is automatic. There are no user-facing modes.
+  Token Guard compresses long inputs, trims noisy outputs, keeps compressed handoffs,
+  and only intervenes on high-confidence token waste.
 
 Trust model:
   Local-first. No daemon. No cloud backend. No code upload. No API calls.
