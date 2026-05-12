@@ -5,9 +5,9 @@ import { fileURLToPath } from 'node:url';
 import { install, upgrade, uninstall, setEnabled, setMode, allowOnce } from '../lib/installer.js';
 import { ensureProjectFiles, getPaths, loadConfig } from '../lib/project.js';
 import { handleHook } from '../lib/hook-handler.js';
-import { formatStats } from '../lib/ledger.js';
+import { formatStats, appendEvent } from '../lib/ledger.js';
 import { generateReport, openReport, openFolder } from '../lib/report.js';
-import { scanProject } from '../lib/token-utils.js';
+import { scanProject, estimateTokens } from '../lib/token-utils.js';
 import { runDoctor, formatDoctor } from '../lib/doctor.js';
 import {
   buildSymbolIndex,
@@ -284,6 +284,12 @@ function cmdContext(projectRoot, args) {
     maxTokens: options.maxTokens || config.thresholds?.precisionReadMaxTokens
   });
 
+  recordContextSavingsFromResult(projectRoot, result, {
+    file,
+    method: inferContextMethod(options),
+    query: inferContextQuery(options)
+  });
+
   console.log(formatContextResult(result, {
     includeLanguagePolicy: false
   }));
@@ -388,13 +394,12 @@ function cmdEdit(projectRoot, args) {
 
 function cmdReport(projectRoot) {
   const { html, svg, model } = generateReport(projectRoot);
+  const displaySaved = Number(model.displaySavedTokens ?? model.netSavingsTokens ?? 0);
 
   console.log('Generated Savings Report:');
   console.log(`- ${html}`);
   console.log(`- ${svg}`);
-  console.log(`Net saved after overhead: ${Math.round(model.netSavingsTokens).toLocaleString('en-US')} tokens`);
-  console.log(`Context reads saved: ${Math.round(model.contextReadSavedTokens || 0).toLocaleString('en-US')} tokens`);
-  console.log(`Potential avoidable context: ${Math.round(model.potentialWasteFlaggedTokens).toLocaleString('en-US')} tokens`);
+  console.log(`Token Guard saved: ${Math.round(displaySaved).toLocaleString('en-US')} tokens`);
 }
 
 function cmdOpenReport(projectRoot) {
@@ -406,6 +411,52 @@ function cmdOpenFolder(projectRoot) {
   ensureProjectFiles(projectRoot);
   openFolder(projectRoot);
   console.log('Opening TokenGuard folder...');
+}
+
+function recordContextSavingsFromResult(projectRoot, result, meta = {}) {
+  const text = result?.text || result?.content || result?.snippet || '';
+  const original = Number(
+    result?.originalTokens ||
+    result?.estimatedOriginalTokens ||
+    result?.fullTokens ||
+    0
+  );
+  const returned = Number(
+    result?.returnedTokens ||
+    result?.estimatedTokens ||
+    estimateTokens(text)
+  );
+
+  const saved = Math.max(0, original - returned);
+
+  if (!original || !returned || saved <= 0) return;
+
+  appendEvent(projectRoot, {
+    type: 'context_read_saved',
+    file: result.file || meta.file,
+    kind: result.kind || 'ctx',
+    method: meta.method || result.kind || 'ctx',
+    query: meta.query ? String(meta.query).slice(0, 160) : '',
+    originalTokens: original,
+    returnedTokens: returned,
+    savedTokens: saved,
+    startLine: result.startLine || null,
+    endLine: result.endLine || null
+  });
+}
+
+function inferContextMethod(options = {}) {
+  if (options.diff) return 'diff';
+  if (options.lines) return 'lines';
+  if (options.around) return 'around';
+  if (options.focus || options.symbol) return 'focus';
+  if (options.section) return 'section';
+
+  return 'ctx';
+}
+
+function inferContextQuery(options = {}) {
+  return options.around || options.focus || options.symbol || options.section || options.lines || '';
 }
 
 function parseOptions(args) {
