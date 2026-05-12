@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { install, upgrade, uninstall, setEnabled, setMode, allowOnce } from '../lib/installer.js';
 import { ensureProjectFiles, getPaths, loadConfig } from '../lib/project.js';
 import { handleHook } from '../lib/hook-handler.js';
+import { formatStats } from '../lib/ledger.js';
 import { generateReport, openReport, openFolder } from '../lib/report.js';
 import { scanProject } from '../lib/token-utils.js';
 import { runDoctor, formatDoctor } from '../lib/doctor.js';
@@ -48,13 +49,12 @@ async function main() {
         return cmdEnable(projectRoot);
       case 'disable':
         return cmdDisable(projectRoot);
-
-      // Hidden backward-compatible command. Smart Savings is the only product-facing policy.
       case 'mode':
         return cmdMode(projectRoot);
-
       case 'status':
         return cmdStatus(projectRoot);
+      case 'stats':
+        return cmdStats(projectRoot);
       case 'version':
       case '--version':
       case '-v':
@@ -185,16 +185,19 @@ function cmdUninstall(projectRoot, args) {
 
 function cmdEnable(projectRoot) {
   const config = setEnabled(projectRoot, true);
+
   console.log(`Token Guard enabled. Smart Savings: ${config.policy?.strategy || 'smart'}`);
 }
 
 function cmdDisable(projectRoot) {
   setEnabled(projectRoot, false);
+
   console.log('Token Guard disabled. Hooks may still fire, but they will exit without doing work.');
 }
 
 function cmdMode(projectRoot) {
   const config = setMode(projectRoot);
+
   console.log(`Token Guard uses one policy now: ${config.policy?.strategy || 'smart'}. No user-facing modes are required.`);
 }
 
@@ -208,6 +211,11 @@ function cmdAllow(projectRoot, args) {
 
 function cmdVersion() {
   console.log(`token-guard ${VERSION}`);
+}
+
+function cmdStats(projectRoot) {
+  ensureProjectFiles(projectRoot);
+  console.log(formatStats(projectRoot));
 }
 
 function cmdStatus(projectRoot) {
@@ -385,6 +393,7 @@ function cmdReport(projectRoot) {
   console.log(`- ${html}`);
   console.log(`- ${svg}`);
   console.log(`Net saved after overhead: ${Math.round(model.netSavingsTokens).toLocaleString('en-US')} tokens`);
+  console.log(`Context reads saved: ${Math.round(model.contextReadSavedTokens || 0).toLocaleString('en-US')} tokens`);
   console.log(`Potential avoidable context: ${Math.round(model.potentialWasteFlaggedTokens).toLocaleString('en-US')} tokens`);
 }
 
@@ -530,6 +539,7 @@ Usage:
   token-guard install [--no-claude] [--no-codex]
   token-guard doctor
   token-guard status
+  token-guard stats
   token-guard version
   token-guard upgrade
   token-guard report
@@ -560,7 +570,7 @@ Update current project:
 Default behavior:
   Smart Savings is automatic. There are no user-facing modes.
   Token Guard compresses long inputs, trims noisy outputs, keeps compressed handoffs,
-  and only intervenes on high-confidence token waste.
+  records targeted context savings, and only intervenes on high-confidence token waste.
 
 Trust model:
   Local-first. No daemon. No cloud backend. No code upload. No API calls.
