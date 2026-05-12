@@ -1,6 +1,6 @@
 {
   "name": "token-guard",
-  "version": "0.4.4",
+  "version": "0.4.5",
   "description": "A local-first smart token savings layer for Claude Code and Codex. Stop wasting tokens across the AI coding loop.",
   "type": "module",
   "bin": {
@@ -34,7 +34,8 @@
     "tool-output-compression",
     "session-handoff",
     "session-reset",
-    "context-savings"
+    "context-savings",
+    "precision-input"
   ],
   "author": "Coding Daddy",
   "license": "Apache-2.0",
