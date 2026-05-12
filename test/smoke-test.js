@@ -77,8 +77,38 @@ try {
   assert.ok(digestHook.hookSpecificOutput.additionalContext.includes('input-digest.md'));
   assert.ok(fs.readFileSync(path.join(tmp, 'TokenGuard', 'sessions', 'input-digest.md'), 'utf8').includes('Hard Requirements'));
 
+  const digestRepeat = runHook('UserPromptSubmit', { cwd: tmp, prompt: longPrompt });
+  assert.deepEqual(digestRepeat, {}, 'identical long prompt should skip digest rewrite and notice');
+
   const noDigestHook = runHook('UserPromptSubmit', { cwd: tmp, prompt: 'short message' });
   assert.deepEqual(noDigestHook, {}, 'short prompts should not trigger repeated static rule injection');
+
+  runHook('SessionStart', { cwd: tmp });
+  let webResult = {};
+  for (let i = 0; i < 7; i += 1) {
+    webResult = runHook('PreToolUse', { cwd: tmp, toolName: 'WebSearch', tool_input: { query: `q${i}` } });
+  }
+  assert.equal(webResult.hookSpecificOutput?.permissionDecision, 'deny', 'web budget should block once exceeded');
+
+  const longRoutingPrompt = `${'我要重构这个 service，但同时也要做一些小事，比如 rename 几个变量，写几行注释，然后跑测试。'.repeat(20)}`;
+  const routingNotice = runHook('UserPromptSubmit', { cwd: tmp, prompt: longRoutingPrompt });
+  assert.ok(routingNotice.hookSpecificOutput?.additionalContext?.includes('model routing'), 'model routing hint should be injected for long prompts');
+
+  const subagentPost = runHook('PostToolUse', {
+    cwd: tmp,
+    toolName: 'Agent',
+    tool_input: { subagent_type: 'general-purpose', model: 'haiku', prompt: 'find all usages of foo' },
+    tool_response: { content: 'found 3 usages: file1.js, file2.js, file3.js' }
+  });
+  assert.ok(subagentPost.hookSpecificOutput?.additionalContext?.includes('opus-equivalent'), 'subagent post hook should report opus-equivalent savings');
+
+  const subagentOpus = runHook('PostToolUse', {
+    cwd: tmp,
+    toolName: 'Agent',
+    tool_input: { subagent_type: 'general-purpose', model: 'opus', prompt: 'reason hard' },
+    tool_response: { content: 'long reasoning result' }
+  });
+  assert.deepEqual(subagentOpus, {}, 'subagent running on opus should record zero savings');
 
   const transcriptPath = path.join(tmp, 'transcript.jsonl');
   const records = [
