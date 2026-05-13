@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node /Users/pengfei.zhao/wf/TokenGuard/bin/token-guard.js turn-tick --output-tokens 100 --note \"post-handoff turn\")",
+      "Bash(node /Users/pengfei.zhao/wf/TokenGuard/bin/token-guard.js session-check --json)",
+      "Bash(node -e ' *)",
+      "Bash(rm -rf .)",
+      "Bash(rm -rf /tmp/tg-report)",
+      "Bash(rm -rf /tmp/tg-viral)",
+      "Bash(rm -f TokenGuard/reports/weekly-savings.html TokenGuard/reports/share-card.svg)",
+      "Bash(node /Users/pengfei.zhao/wf/TokenGuard/bin/token-guard.js open-report)",
+      "Bash(rm -rf /tmp/tg-fix)",
+      "Bash(rm -rf /tmp/tg-p)"
+    ],
+    "additionalDirectories": [
+      "/private/tmp/tg-viral",
+      "/private/tmp/tg-fix",
+      "/private/tmp/tg-p"
+    ]
+  }
+}

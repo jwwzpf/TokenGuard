@@ -92,7 +92,7 @@ try {
 
   const longRoutingPrompt = `${'我要重构这个 service，但同时也要做一些小事，比如 rename 几个变量，写几行注释，然后跑测试。'.repeat(20)}`;
   const routingNotice = runHook('UserPromptSubmit', { cwd: tmp, prompt: longRoutingPrompt });
-  assert.ok(routingNotice.hookSpecificOutput?.additionalContext?.includes('model routing'), 'model routing hint should be injected for long prompts');
+  assert.ok(routingNotice.hookSpecificOutput?.additionalContext?.includes('routing hint'), 'routing hint should be injected for heavy refactor prompts');
 
   const subagentPost = runHook('PostToolUse', {
     cwd: tmp,
@@ -100,7 +100,8 @@ try {
     tool_input: { subagent_type: 'general-purpose', model: 'haiku', prompt: 'find all usages of foo' },
     tool_response: { content: 'found 3 usages: file1.js, file2.js, file3.js' }
   });
-  assert.ok(subagentPost.hookSpecificOutput?.additionalContext?.includes('opus-equivalent'), 'subagent post hook should report opus-equivalent savings');
+  assert.ok(subagentPost.hookSpecificOutput?.additionalContext?.includes('subagent delegation tracked'), 'subagent post hook should report tracked delegation');
+  assert.ok(subagentPost.hookSpecificOutput?.additionalContext?.includes('Verify subagent claims'), 'subagent post hook should remind to verify output');
 
   const subagentOpus = runHook('PostToolUse', {
     cwd: tmp,

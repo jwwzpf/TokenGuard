@@ -22,6 +22,16 @@ import {
   formatContextResult
 } from '../lib/context-router.js';
 import { applyEdit } from '../lib/edit-flow.js';
+import {
+  sessionCheck,
+  turnTick,
+  resetSession,
+  getCodexActivity,
+  recordHandoffWritten,
+  formatSessionCheck,
+  buildPressureFooter
+} from '../lib/session-check.js';
+import { writeHandoffManual } from '../lib/handoff.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -84,6 +94,15 @@ async function main() {
         return cmdOpenFolder(projectRoot);
       case 'allow':
         return cmdAllow(projectRoot, args);
+      case 'session-check':
+      case 'session_check':
+        return cmdSessionCheck(projectRoot, args);
+      case 'turn-tick':
+      case 'turn_tick':
+      case 'tick':
+        return cmdTurnTick(projectRoot, args);
+      case 'handoff':
+        return cmdHandoff(projectRoot, args);
       case 'hook':
         return handleHook(args[0]);
       case 'help':
@@ -234,10 +253,36 @@ function cmdStatus(projectRoot) {
   console.log(`Narrow Read max: ${config.thresholds.narrowReadMaxLines.toLocaleString('en-US')} lines`);
   console.log(`Precision read max: ${config.thresholds.precisionReadMaxTokens.toLocaleString('en-US')} tokens`);
   console.log(`Local folder: ${path.relative(projectRoot, paths.base)}/`);
-  console.log(`Claude settings: ${fs.existsSync(paths.claudeSettingsLocal) ? 'present' : 'not found'}`);
-  console.log(`AGENTS.md: ${fs.existsSync(paths.agents) ? 'present' : 'not found'}`);
   console.log(`Symbol index: ${fs.existsSync(paths.symbolsJson) ? 'present' : 'not found'}`);
-  console.log('Background daemon: not running. Token Guard only runs when hooks/instructions trigger it.');
+
+  console.log('\n— Channels —');
+
+  const claudeActive = fs.existsSync(paths.claudeSettingsLocal) && claudeHooksPresent(paths.claudeSettingsLocal);
+  console.log(`Claude Code:  ${claudeActive ? 'hooks active' : 'no hooks installed'}${claudeActive ? ` (${path.relative(projectRoot, paths.claudeSettingsLocal)})` : ''}`);
+
+  const codex = getCodexActivity(projectRoot);
+  const agentsPresent = fs.existsSync(paths.agents);
+  const codexLine = codex.present
+    ? `CLI-mode (no hooks). Last tick: ${codex.lastTickAt || 'n/a'} · ${codex.turnCount} turns · ~${Number(codex.cumulative || 0).toLocaleString('en-US')} tok cumulative`
+    : agentsPresent
+      ? 'CLI-mode (no hooks). No turn-tick recorded yet — Codex may not be calling `tg turn-tick`.'
+      : 'not installed (AGENTS.md missing)';
+  console.log(`Codex:        ${codexLine}`);
+
+  console.log('\nBackground daemon: not running. Token Guard only runs when hooks or CLI tools trigger it.');
+}
+
+function claudeHooksPresent(settingsPath) {
+  try {
+    const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+    const hooks = settings.hooks || {};
+    return Object.values(hooks).some(groups => {
+      if (!Array.isArray(groups)) return false;
+      return groups.some(group => (group.hooks || []).some(hook => /token-guard hook/.test(String(hook.command || ''))));
+    });
+  } catch {
+    return false;
+  }
 }
 
 function cmdDoctor(projectRoot) {
@@ -293,6 +338,10 @@ function cmdContext(projectRoot, args) {
   console.log(formatContextResult(result, {
     includeLanguagePolicy: false
   }));
+
+  const returned = Number(result.returnedTokens || 0);
+  const footer = buildPressureFooter(projectRoot, returned);
+  if (footer) console.log(footer);
 }
 
 function cmdIndex(projectRoot) {
@@ -326,6 +375,9 @@ function cmdFind(projectRoot, args) {
   });
 
   console.log(formatFindResults(results));
+
+  const footer = buildPressureFooter(projectRoot, 0);
+  if (footer) console.log(footer);
 }
 
 function cmdRead(projectRoot, args) {
@@ -349,6 +401,10 @@ function cmdRead(projectRoot, args) {
   });
 
   console.log(formatSmartReadResult(result));
+
+  const returned = Number(result.returnedTokens || 0);
+  const footer = buildPressureFooter(projectRoot, returned);
+  if (footer) console.log(footer);
 }
 
 function cmdSummarize(projectRoot, args) {
@@ -370,6 +426,9 @@ function cmdSummarize(projectRoot, args) {
   console.log(`Symbols: ${result.symbols.toLocaleString('en-US')}`);
   console.log(`Sections: ${result.sections.toLocaleString('en-US')}`);
   console.log(`Summary: ${path.relative(projectRoot, result.summaryPath)}`);
+
+  const footer = buildPressureFooter(projectRoot, 0);
+  if (footer) console.log(footer);
 }
 
 function cmdEdit(projectRoot, args) {
@@ -390,16 +449,113 @@ function cmdEdit(projectRoot, args) {
 
   console.log(`Token Guard edit applied: ${result.file}`);
   console.log(`Replacements: ${result.occurrences}`);
+
+  const footer = buildPressureFooter(projectRoot, 0);
+  if (footer) console.log(footer);
+}
+
+function cmdSessionCheck(projectRoot, args) {
+  ensureProjectFiles(projectRoot);
+
+  if (args.includes('--reset')) {
+    const result = resetSession(projectRoot);
+    if (args.includes('--json')) {
+      console.log(JSON.stringify(result, null, 2));
+    } else {
+      console.log(formatSessionCheck(result));
+    }
+    return;
+  }
+
+  const result = sessionCheck(projectRoot);
+
+  if (args.includes('--json')) {
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+
+  console.log(formatSessionCheck(result));
+
+  if (result.level === 'switch') {
+    process.exitCode = 2;
+  } else if (result.level === 'warn') {
+    process.exitCode = 0;
+  }
+}
+
+function cmdTurnTick(projectRoot, args) {
+  ensureProjectFiles(projectRoot);
+
+  const options = parseOptions(args);
+  const result = turnTick(projectRoot, {
+    prompt: options.prompt || '',
+    promptTokens: options.promptTokens || 0,
+    outputTokens: options.outputTokens || 0,
+    tools: options.tools || [],
+    note: options.note || ''
+  });
+
+  if (args.includes('--json')) {
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+
+  console.log(formatSessionCheck(result));
+}
+
+function cmdHandoff(projectRoot, args) {
+  ensureProjectFiles(projectRoot);
+
+  const sub = args.find(arg => !arg.startsWith('--')) || 'write';
+  const options = parseOptions(args);
+
+  if (sub === 'write' || sub === 'update') {
+    const result = writeHandoffManual(projectRoot, {
+      goal: options.goal || '',
+      note: options.note || '',
+      reason: 'cli_handoff_write',
+      force: args.includes('--force')
+    });
+
+    if (!result.updated) {
+      console.log(`Token Guard handoff: not updated (${result.reason}).`);
+      return;
+    }
+
+    recordHandoffWritten(projectRoot);
+
+    console.log('Token Guard handoff written.');
+    console.log(`Path: ${path.relative(projectRoot, result.handoffPath)}`);
+    console.log(`Files read: ${result.filesRead}, touched: ${result.filesTouched}, commands: ${result.commandsRun}, failures: ${result.failures}`);
+    console.log(`Size: ${result.handoffLines} lines / ${result.handoffChars.toLocaleString('en-US')} chars`);
+    console.log('Next Codex session SessionStart will auto-load this handoff.');
+    return;
+  }
+
+  if (sub === 'show' || sub === 'cat') {
+    const paths = getPaths(projectRoot);
+    if (!fs.existsSync(paths.handoff)) {
+      console.log('No handoff present.');
+      return;
+    }
+    console.log(fs.readFileSync(paths.handoff, 'utf8'));
+    return;
+  }
+
+  console.error(`Unknown handoff subcommand: ${sub}\nUsage: token-guard handoff [write|show] [--goal TEXT] [--note TEXT] [--force]`);
+  process.exitCode = 1;
 }
 
 function cmdReport(projectRoot) {
-  const { html, svg, model } = generateReport(projectRoot);
-  const displaySaved = Number(model.displaySavedTokens ?? model.netSavingsTokens ?? 0);
+  const { html, svg, model, todayDisplay, weekDisplay } = generateReport(projectRoot);
+  const weekSaved = Math.round(Number(weekDisplay?.savedTokens ?? model.displaySavedTokens ?? 0));
+  const todaySaved = Math.round(Number(todayDisplay?.savedTokens ?? 0));
 
   console.log('Generated Savings Report:');
   console.log(`- ${html}`);
   console.log(`- ${svg}`);
-  console.log(`Token Guard saved: ${Math.round(displaySaved).toLocaleString('en-US')} tokens`);
+  console.log(`Token Guard saved today: ${todaySaved.toLocaleString('en-US')} tokens`);
+  console.log(`Token Guard saved this week: ${weekSaved.toLocaleString('en-US')} tokens`);
 }
 
 function cmdOpenReport(projectRoot) {
@@ -576,6 +732,33 @@ function parseOptions(args) {
       options.diff = true;
       continue;
     }
+
+    if (arg === '--note') { options.note = next(); continue; }
+    if (arg.startsWith('--note=')) { options.note = arg.slice('--note='.length); continue; }
+
+    if (arg === '--goal') { options.goal = next(); continue; }
+    if (arg.startsWith('--goal=')) { options.goal = arg.slice('--goal='.length); continue; }
+
+    if (arg === '--prompt') { options.prompt = next(); continue; }
+    if (arg.startsWith('--prompt=')) { options.prompt = arg.slice('--prompt='.length); continue; }
+
+    if (arg === '--prompt-tokens') { options.promptTokens = Number(next()); continue; }
+    if (arg.startsWith('--prompt-tokens=')) { options.promptTokens = Number(arg.slice('--prompt-tokens='.length)); continue; }
+
+    if (arg === '--output-tokens') { options.outputTokens = Number(next()); continue; }
+    if (arg.startsWith('--output-tokens=')) { options.outputTokens = Number(arg.slice('--output-tokens='.length)); continue; }
+
+    if (arg === '--tool' || arg === '--tools') {
+      const value = next();
+      options.tools = String(value || '').split(',').map(s => s.trim()).filter(Boolean);
+      continue;
+    }
+
+    if (arg.startsWith('--tool=') || arg.startsWith('--tools=')) {
+      const value = arg.slice(arg.indexOf('=') + 1);
+      options.tools = String(value || '').split(',').map(s => s.trim()).filter(Boolean);
+      continue;
+    }
   }
 
   return options;
@@ -603,6 +786,14 @@ Agent-facing context tools:
   tg ctx <file> --around <text> --context 10
   tg ctx <file> --lines A:B
   tg ctx <file> --diff
+
+Codex session monitoring (CLI-only, no daemon):
+  tg session-check                                 # check context pressure each turn (exit 2 = switch)
+  tg session-check --reset                         # mark a new Codex session boundary
+  tg turn-tick --output-tokens N --note "<goal>"   # record one turn's cumulative tokens
+  tg turn-tick --prompt "<text>" --tool tg-ctx     # estimate prompt + record tools
+  tg handoff write --goal "<goal>" --note "<next>" # explicit handoff before /clear
+  tg handoff show                                  # print current handoff
 
 Advanced tools:
   token-guard estimate
