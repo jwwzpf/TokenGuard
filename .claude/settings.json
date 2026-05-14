@@ -10,12 +10,14 @@
       "Bash(rm -f TokenGuard/reports/weekly-savings.html TokenGuard/reports/share-card.svg)",
       "Bash(node /Users/pengfei.zhao/wf/TokenGuard/bin/token-guard.js open-report)",
       "Bash(rm -rf /tmp/tg-fix)",
-      "Bash(rm -rf /tmp/tg-p)"
+      "Bash(rm -rf /tmp/tg-p)",
+      "Bash(rm -rf /tmp/tg-svg)"
     ],
     "additionalDirectories": [
       "/private/tmp/tg-viral",
       "/private/tmp/tg-fix",
-      "/private/tmp/tg-p"
+      "/private/tmp/tg-p",
+      "/private/tmp/tg-svg"
     ]
   }
 }
