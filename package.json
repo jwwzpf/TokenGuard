@@ -1,7 +1,7 @@
 {
-  "name": "token-guard",
+  "name": "@codingdaddy/token-guard",
   "version": "0.4.5",
-  "description": "A local-first smart token savings layer for Claude Code and Codex. Stop wasting tokens across the AI coding loop.",
+  "description": "A local-first smart-savings layer for Claude Code and Codex. Cut wasted tokens from your AI coding loop.",
   "type": "module",
   "bin": {
     "token-guard": "./bin/token-guard.js",
@@ -16,7 +16,12 @@
     "lib/",
     "test/",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "NOTICE",
+    "CHANGELOG.md",
+    "CONTRIBUTING.md",
+    "CODE_OF_CONDUCT.md",
+    "SECURITY.md"
   ],
   "keywords": [
     "claude-code",
@@ -29,13 +34,13 @@
     "ai-agent",
     "token-savings",
     "smart-savings",
-    "maven",
-    "git",
     "tool-output-compression",
     "session-handoff",
     "session-reset",
     "context-savings",
-    "precision-input"
+    "precision-input",
+    "coding-agent",
+    "ai-workflow"
   ],
   "author": "Coding Daddy",
   "license": "Apache-2.0",
@@ -47,6 +52,9 @@
     "url": "https://github.com/jwwzpf/TokenGuard/issues"
   },
   "homepage": "https://github.com/jwwzpf/TokenGuard#readme",
+  "publishConfig": {
+    "access": "public"
+  },
   "engines": {
     "node": ">=18"
   }
