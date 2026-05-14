@@ -8,7 +8,7 @@ A local-first smart-savings layer for Claude Code and Codex.
 
 Token Guard helps AI coding agents spend tokens on signal, not noise: precise code context, compressed tool output, cleaner handoffs, smarter session pressure, model/subagent routing hints, and shareable savings reports.
 
-[![npm](https://img.shields.io/npm/v/%40codingdaddy%2Ftoken-guard?label=npm)](https://www.npmjs.com/package/@codingdaddy/token-guard)
+[![npm](https://img.shields.io/npm/v/%40jwwzpf%2Ftoken-guard?label=npm)](https://www.npmjs.com/package/@jwwzpf/token-guard)
 ![License](https://img.shields.io/badge/License-Apache%202.0-blue)
 ![node](https://img.shields.io/badge/node-%3E%3D18-brightgreen)
 ![local-first](https://img.shields.io/badge/local--first-yes-brightgreen)
@@ -43,7 +43,7 @@ It helps your existing agent use context more intelligently.
 Install globally:
 
 ```bash
-npm install -g @codingdaddy/token-guard
+npm install -g @jwwzpf/token-guard
 ```
 
 Inside any project root:
@@ -794,7 +794,7 @@ Token Guard is licensed under Apache-2.0. You are free to use, modify, and redis
 
 If you build a derivative work or redistribute a modified version, please preserve the original license and attribution notice:
 
-> Based on Token Guard by Coding Daddy — `@codingdaddy/token-guard`
+> Based on Token Guard by Coding Daddy — `@jwwzpf/token-guard`
 
 See `NOTICE` for attribution details.
 

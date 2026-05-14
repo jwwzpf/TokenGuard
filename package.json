@@ -1,11 +1,11 @@
 {
-  "name": "@codingdaddy/token-guard",
+  "name": "@jwwzpf/token-guard",
   "version": "0.4.5",
   "description": "A local-first smart-savings layer for Claude Code and Codex. Cut wasted tokens from your AI coding loop.",
   "type": "module",
   "bin": {
-    "token-guard": "./bin/token-guard.js",
-    "tg": "./bin/token-guard.js"
+    "token-guard": "bin/token-guard.js",
+    "tg": "bin/token-guard.js"
   },
   "scripts": {
     "start": "node ./bin/token-guard.js",
