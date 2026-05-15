@@ -37,6 +37,19 @@ It does not try to become a new coding agent.
 It helps your existing agent use context more intelligently.
 
 ---
+## See your savings
+
+Token Guard generates a local report showing how many tokens and estimated cost it reclaimed from your AI coding loop.
+
+<p align="center">
+  <img
+    src="https://raw.githubusercontent.com/jwwzpf/TokenGuard/main/docs/assets/token-guard-report-preview.png"
+    alt="Token Guard savings report preview showing tokens and cost reclaimed"
+    width="900"
+  />
+</p>
+
+---
 
 ## Quick start
 
