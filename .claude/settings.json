@@ -11,7 +11,9 @@
       "Bash(node /Users/pengfei.zhao/wf/TokenGuard/bin/token-guard.js open-report)",
       "Bash(rm -rf /tmp/tg-fix)",
       "Bash(rm -rf /tmp/tg-p)",
-      "Bash(rm -rf /tmp/tg-svg)"
+      "Bash(rm -rf /tmp/tg-svg)",
+      "Bash(npm link *)",
+      "Bash(node bin/token-guard.js uninstall-global --dry-run --skip-npm)"
     ],
     "additionalDirectories": [
       "/private/tmp/tg-viral",
