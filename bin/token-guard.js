@@ -32,6 +32,7 @@ import {
   buildPressureFooter
 } from '../lib/session-check.js';
 import { writeHandoffManual } from '../lib/handoff.js';
+import { uninstallGlobalCli, formatGlobalUninstallResult } from '../lib/global-uninstall.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -54,6 +55,9 @@ async function main() {
       case 'upgrade':
         return cmdUpgrade(projectRoot, args);
       case 'uninstall':
+        if (args.includes('--global')) {
+          return cmdUninstallGlobal(args);
+        }
         return cmdUninstall(projectRoot, args);
       case 'enable':
         return cmdEnable(projectRoot);
@@ -110,6 +114,10 @@ async function main() {
       case '-h':
       case '--help':
         return printHelp();
+      case 'uninstall-global':
+      case 'global-uninstall':
+      case 'global-clean':
+        return cmdUninstallGlobal(args);
       default:
         console.error(`Unknown command: ${cmd}\n`);
         printHelp();
@@ -197,9 +205,13 @@ function cmdUninstall(projectRoot, args) {
   }
 
   if (!keepData) {
-    console.log('\nProject cleanup complete. You can reinstall with:');
+    console.log('\nProject cleanup complete. You can reinstall in this project with:');
     console.log('  token-guard install');
   }
+
+  console.log('\nNote: this removes Token Guard from the current project only.');
+  console.log('To remove the global CLI commands too, run:');
+  console.log('  token-guard uninstall-global');
 }
 
 function cmdEnable(projectRoot) {
@@ -212,6 +224,29 @@ function cmdDisable(projectRoot) {
   setEnabled(projectRoot, false);
 
   console.log('Token Guard disabled. Hooks may still fire, but they will exit without doing work.');
+}
+
+function cmdUninstallGlobal(args) {
+  const force = args.includes('--force');
+  const yes = args.includes('--yes') || args.includes('-y');
+
+  if (force && !yes) {
+    console.error('--force will remove ANY file named `token-guard` or `tg` in candidate bin directories,');
+    console.error('even if it is not recognized as Token Guard. This may delete unrelated tools with the same name.');
+    console.error('');
+    console.error('Re-run with both flags to confirm:');
+    console.error('  token-guard uninstall-global --force --yes');
+    process.exitCode = 1;
+    return;
+  }
+
+  const result = uninstallGlobalCli({
+    force,
+    skipNpm: args.includes('--skip-npm'),
+    dryRun: args.includes('--dry-run')
+  });
+
+  console.log(formatGlobalUninstallResult(result));
 }
 
 function cmdMode(projectRoot) {
@@ -778,7 +813,9 @@ Usage:
   token-guard upgrade
   token-guard report
   token-guard open-report
-  token-guard uninstall
+  token-guard uninstall                              # remove from current project
+  token-guard uninstall-global [--force --yes] [--skip-npm] [--dry-run]  # remove global CLI + npm package
+  token-guard uninstall --global                     # alias for uninstall-global
 
 Agent-facing context tools:
   tg ctx <file>
